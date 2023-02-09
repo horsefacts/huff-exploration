@@ -8,13 +8,25 @@ import "forge-std/console.sol";
 contract TokenTest is Test {
     Token public token;
 
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
+
     function setUp() public {
         token = Token(HuffDeployer.deploy("Token"));
     }
 
-    function test_mint(address to, uint256 amount) public {
-        token.mint(to, amount);
-        assertEq(token.balanceOf(to), amount);
+    function test_mint() public {
+        token.mint(alice, 10 ether);
+        assertEq(token.balanceOf(alice), 10 ether);
+        assertEq(token.totalSupply(), 10 ether);
+
+        token.mint(bob, 5 ether);
+        assertEq(token.balanceOf(bob), 5 ether);
+        assertEq(token.totalSupply(), 15 ether);
+
+        token.mint(alice, 5 ether);
+        assertEq(token.balanceOf(alice), 15 ether);
+        assertEq(token.totalSupply(), 20 ether);
     }
 
     function test_decimals() public {
@@ -34,6 +46,7 @@ interface Token {
     function mint(address, uint256) external;
     function balanceOf(address) external view returns (uint256);
     function decimals() external view returns (uint256);
+    function totalSupply() external view returns (uint256);
     function name() external view returns (string memory);
     function symbol() external view returns (string memory);
 }

@@ -5,18 +5,24 @@
 #define function decimals() nonpayable returns (uint256)
 #define function name() nonpayable returns (string)
 #define function symbol() nonpayable returns (string)
+#define function totalSupply() nonpayable returns (uint256)
 
-/* Storage Slots */
 // bytes32("token.storage.balanceOf")
 #define constant BALANCE_OF = 0x746f6b656e2e73746f726167652e62616c616e63654f66000000000000000000 
+// bytes32("token.storage.totalSupply")
+#define constant TOTAL_SUPPLY = 0x746f6b656e2e73746f726167652e746f74616c537570706c7900000000000000 
 
+// bytes32("MyCoolToken")
 #define constant NAME = 0x4d79436f6f6c546f6b656e000000000000000000000000000000000000000000
 #define constant NAME_LEN = 0xb
 
+// bytes32("COOL")
 #define constant SYMBOL = 0x434f4f4c00000000000000000000000000000000000000000000000000000000
 #define constant SYMBOL_LEN = 0x4
 
-#define macro EIP_1967_SLOT() = takes (0) returns (0) {
+#define constant DECIMALS = 0x12
+
+#define macro EIP_1967_SLOT() = takes (1) returns (1) {
                            // [bytes32_slot_name]
     0x00 mstore            // []          
     0x01                   // [0x01]
@@ -24,7 +30,7 @@
     sub                    // [slot_name_hash - 0x01] 
 }
 
-#define macro HASH_MAP_SLOT() = takes (0) returns (0) {
+#define macro HASH_MAP_SLOT() = takes (2) returns (1) {
                    // [map_name, entry_key]
     0x00 mstore    // [entry_key] 
     0x20 mstore    // []
@@ -33,66 +39,150 @@
     sub            // [slot_name]
 }
 
-#define macro STORE_VALUE() = takes (0) returns (0) {
+#define macro STORE_VALUE() = takes (2) returns (0) {
                     // [slot_name, value]
     EIP_1967_SLOT() // [slot_addr, value]
     sstore          // []
 }
 
-#define macro READ_VALUE() = takes (0) returns (0) {
-                         // [slot_name] 
-    EIP_1967_SLOT()      // [slot_addr]
-    sload                // [value]
+#define macro READ_VALUE() = takes (1) returns (1) {
+                    // [slot_name] 
+    EIP_1967_SLOT() // [slot_addr]
+    sload           // [value]
 }
 
-#define macro MINT() = takes (0) returns (0) {
-    0x24 calldataload            // [amount]
-    0x04 calldataload            // [address, amount]
-    [BALANCE_OF] HASH_MAP_SLOT() // [entry_slot_addr, amount]
-    STORE_VALUE()                
+#define macro READ_KEY() = takes (1) returns (1) {
+    // [map_slot_addr]
+    HASH_MAP_SLOT()
+    READ_VALUE()
 }
 
-#define macro BALANCE_OF() = takes (0) returns (0) {
-    0x04 calldataload            // [account_addr]
-    [BALANCE_OF] HASH_MAP_SLOT() // [account_addr]
-    READ_VALUE()                 // [balance]
-    0x00 mstore                  // []
-    0x20 0x00 return             // []
+#define macro KEY() = takes (2) returns (1) {
+    HASH_MAP_SLOT()
 }
 
-#define macro MSTORE_STR() = takes (0) returns (0) {
+#define macro WRITE_KEY() = takes (2) returns (0) {
+    // [map_slot_addr]
+    HASH_MAP_SLOT()
+    STORE_VALUE()
+}
+
+#define macro MSTORE_STR() = takes (2) returns (0) {
     // [string_len, string]
     0x20 mstore
     0x40 mstore 
     0x20 0x00 mstore
 }
 
+#define macro MSTORE_WORD() = takes (1) returns (0) {
+    // [value]
+    0x00 mstore
+}
+
+#define macro RETURN(n) = takes (1) returns (0) {
+    <n>           // [num_words]
+    0x20 mul      // [0x20 * num_words] 
+    0x00 return
+}
+
+#define macro RETURN1() = takes (0) returns (0) {
+    RETURN(0x01)
+}
+
+#define macro RETURN3() = takes (0) returns (0) {
+    RETURN(0x03)
+}
+
+#define macro RETURN_STR() = takes (0) returns (0) {
+    MSTORE_STR() 
+    RETURN3()
+}
+
+#define macro RETURN_WORD() = takes (0) returns (0) {
+    MSTORE_WORD() 
+    RETURN1()
+}
+
+#define macro ARGV(n) = takes (0) returns (1) {
+    <n>
+    0x20 mul      // [0x20 * calldata_word]
+    0x04 add      // [0x4 + 0x20 * calldata_word] 
+    calldataload
+}
+
+#define macro ARGV0() = takes (0) returns (1) {
+    ARGV(0x00) 
+}
+
+#define macro ARGV1() = takes (0) returns (1) {
+    ARGV(0x01)
+}
+
+#define macro INCREMENT() = takes (2) returns (1) {
+                  // [slot_addr, amount]
+    dup1          // [slot_addr, slot_addr, amount]
+    READ_VALUE()  // [current_val, slot_addr, amount]
+    dup3          // [amount, current_val, slot_addr, amount]
+    add           // [current_val + amount, slot_addr, amount]
+    swap1         // [slot_addr, new_amount, amount]
+    STORE_VALUE() // [amount] 
+}
+
+#define macro TOTAL_SUPPLY() = takes(0) returns (0) {
+    [TOTAL_SUPPLY] READ_VALUE() RETURN_WORD()
+}
+
 #define macro DECIMALS() = takes (0) returns (0) {
-    0x12 0x00 mstore
-    0x20 0x00 return
+    [DECIMALS] RETURN_WORD() 
 }
 
 #define macro NAME() = takes (0) returns (0) {
-    [NAME] [NAME_LEN] MSTORE_STR()
-    0x60 0x00 return
+    [NAME] [NAME_LEN] RETURN_STR()
 }
 
 #define macro SYMBOL() = takes (0) returns (0) {
-    [SYMBOL] [SYMBOL_LEN] MSTORE_STR()
-    0x60 0x00 return
+    [SYMBOL] [SYMBOL_LEN] RETURN_STR()
+}
+
+#define macro MINT() = takes (0) returns (0) {
+    ARGV1() ARGV0() [BALANCE_OF] KEY() INCREMENT()
+    ARGV1() [TOTAL_SUPPLY] INCREMENT()   
+}
+
+#define macro BALANCE_OF() = takes (0) returns (0) {
+    ARGV0() [BALANCE_OF] KEY() READ_VALUE()     
+    RETURN_WORD()
+}
+
+#define macro DEFJUMP(label) = takes (2) returns (1) {
+            // [func_sig, call_sig]
+    <label> // [label, func_sig, call_sig]
+    swap1   // [func_sig, label, call_sig]
+    dup3    // [call_sig, func_sig, label, call_sig]
+    eq      // [1, label, call_sig]
+    swap1   // [label, 1, call_sig]
+    jumpi   // [call_sig]
+}
+
+#define macro CALL_SIG() = takes (0) returns (1) {
+    0x00 calldataload 0xE0 shr
+}
+
+#define macro FALLBACK_REVERT() = takes (0) returns (0) {
+    0x00 0x00 revert
 }
 
 #define macro MAIN() = takes (0) returns (0) {
-    // Identify which function is being called.
-    0x00 calldataload 0xE0 shr
-    dup1 __FUNC_SIG(mint) eq mint jumpi
-    dup1 __FUNC_SIG(balanceOf) eq balanceOf jumpi
-    
-    dup1 __FUNC_SIG(decimals) eq decimals jumpi
-    dup1 __FUNC_SIG(name) eq name jumpi
-    dup1 __FUNC_SIG(symbol) eq symbol jumpi
+    CALL_SIG()
 
-    0x00 0x00 revert
+    __FUNC_SIG(mint)         DEFJUMP(mint)
+    __FUNC_SIG(balanceOf)    DEFJUMP(balanceOf)
+    __FUNC_SIG(name)         DEFJUMP(name)
+    __FUNC_SIG(symbol)       DEFJUMP(symbol)
+    __FUNC_SIG(decimals)     DEFJUMP(decimals)
+    __FUNC_SIG(totalSupply)  DEFJUMP(totalSupply)
+
+    FALLBACK_REVERT()
 
     mint:
         MINT()
@@ -104,5 +194,7 @@
         NAME()
     symbol:
         SYMBOL()
+    totalSupply:
+        TOTAL_SUPPLY()
 
 }
