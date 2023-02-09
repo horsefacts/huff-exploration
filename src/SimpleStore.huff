@@ -3,18 +3,27 @@
 #define function getValue() view returns (uint256)
 
 /* Storage Slots */
-#define constant VALUE_LOCATION = FREE_STORAGE_POINTER()
+// bytes32("simplestore.storage.value")
+#define constant VALUE_SLOT_NAME = 0x73696d706c6573746f72652e73746f726167652e76616c756500000000000000 
+
+#define macro EIP_1967_SLOT() = takes (0) returns (0) {
+    // [bytes32_slot_name, ...]
+    0x00 mstore            // []          
+    0x01                   // [0x01]
+    0x20 0x00 sha3         // [slot_name_hash, 0x01]
+    sub                    // [slot_name_hash - 0x01] 
+}
 
 /* Methods */
 #define macro SET_VALUE() = takes (0) returns (0) {
     0x04 calldataload   // [value]
-    [VALUE_LOCATION]    // [ptr, value]
+    [VALUE_SLOT_NAME] EIP_1967_SLOT()
     sstore              // []
 }
 
 #define macro GET_VALUE() = takes (0) returns (0) {
     // Load value from storage.
-    [VALUE_LOCATION]   // [ptr]
+    [VALUE_SLOT_NAME] EIP_1967_SLOT()
     sload                // [value]
 
     // Store value in memory.

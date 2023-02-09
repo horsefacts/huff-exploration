@@ -1,0 +1,108 @@
+/* Interface */
+#define function mint(address,uint256) nonpayable returns ()
+#define function balanceOf(address) nonpayable returns (uint256)
+
+#define function decimals() nonpayable returns (uint256)
+#define function name() nonpayable returns (string)
+#define function symbol() nonpayable returns (string)
+
+/* Storage Slots */
+// bytes32("token.storage.balanceOf")
+#define constant BALANCE_OF = 0x746f6b656e2e73746f726167652e62616c616e63654f66000000000000000000 
+
+#define constant NAME = 0x4d79436f6f6c546f6b656e000000000000000000000000000000000000000000
+#define constant NAME_LEN = 0xb
+
+#define constant SYMBOL = 0x434f4f4c00000000000000000000000000000000000000000000000000000000
+#define constant SYMBOL_LEN = 0x4
+
+#define macro EIP_1967_SLOT() = takes (0) returns (0) {
+                           // [bytes32_slot_name]
+    0x00 mstore            // []          
+    0x01                   // [0x01]
+    0x20 0x00 sha3         // [slot_name_hash, 0x01]
+    sub                    // [slot_name_hash - 0x01] 
+}
+
+#define macro HASH_MAP_SLOT() = takes (0) returns (0) {
+                   // [map_name, entry_key]
+    0x00 mstore    // [entry_key] 
+    0x20 mstore    // []
+    0x01           // [0x01] 
+    0x40 0x00 sha3 // [sha3(map_name . entry_key), 0x01]
+    sub            // [slot_name]
+}
+
+#define macro STORE_VALUE() = takes (0) returns (0) {
+                    // [slot_name, value]
+    EIP_1967_SLOT() // [slot_addr, value]
+    sstore          // []
+}
+
+#define macro READ_VALUE() = takes (0) returns (0) {
+                         // [slot_name] 
+    EIP_1967_SLOT()      // [slot_addr]
+    sload                // [value]
+}
+
+#define macro MINT() = takes (0) returns (0) {
+    0x24 calldataload            // [amount]
+    0x04 calldataload            // [address, amount]
+    [BALANCE_OF] HASH_MAP_SLOT() // [entry_slot_addr, amount]
+    STORE_VALUE()                
+}
+
+#define macro BALANCE_OF() = takes (0) returns (0) {
+    0x04 calldataload            // [account_addr]
+    [BALANCE_OF] HASH_MAP_SLOT() // [account_addr]
+    READ_VALUE()                 // [balance]
+    0x00 mstore                  // []
+    0x20 0x00 return             // []
+}
+
+#define macro MSTORE_STR() = takes (0) returns (0) {
+    // [string_len, string]
+    0x20 mstore
+    0x40 mstore 
+    0x20 0x00 mstore
+}
+
+#define macro DECIMALS() = takes (0) returns (0) {
+    0x12 0x00 mstore
+    0x20 0x00 return
+}
+
+#define macro NAME() = takes (0) returns (0) {
+    [NAME] [NAME_LEN] MSTORE_STR()
+    0x60 0x00 return
+}
+
+#define macro SYMBOL() = takes (0) returns (0) {
+    [SYMBOL] [SYMBOL_LEN] MSTORE_STR()
+    0x60 0x00 return
+}
+
+#define macro MAIN() = takes (0) returns (0) {
+    // Identify which function is being called.
+    0x00 calldataload 0xE0 shr
+    dup1 __FUNC_SIG(mint) eq mint jumpi
+    dup1 __FUNC_SIG(balanceOf) eq balanceOf jumpi
+    
+    dup1 __FUNC_SIG(decimals) eq decimals jumpi
+    dup1 __FUNC_SIG(name) eq name jumpi
+    dup1 __FUNC_SIG(symbol) eq symbol jumpi
+
+    0x00 0x00 revert
+
+    mint:
+        MINT()
+    balanceOf:
+        BALANCE_OF()
+    decimals:
+        DECIMALS()
+    name:
+        NAME()
+    symbol:
+        SYMBOL()
+
+}
