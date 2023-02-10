@@ -5,6 +5,8 @@ import "foundry-huff/HuffDeployer.sol";
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
 
+error InsufficientBalance();
+
 contract TokenTest is Test {
     Token public token;
 
@@ -29,6 +31,48 @@ contract TokenTest is Test {
         assertEq(token.totalSupply(), 20 ether);
     }
 
+    function test_burn() public {
+        token.mint(alice, 7 ether);
+        assertEq(token.balanceOf(alice), 7 ether);
+        assertEq(token.totalSupply(), 7 ether);
+
+        token.burn(alice, 3 ether);
+        assertEq(token.balanceOf(alice), 4 ether);
+        assertEq(token.totalSupply(), 4 ether);
+    }
+
+    function test_transfer() public {
+        token.mint(alice, 3 ether);
+        assertEq(token.balanceOf(alice), 3 ether);
+
+        vm.prank(alice);
+        token.transfer(bob, 1 ether);
+        assertEq(token.balanceOf(alice), 2 ether);
+        assertEq(token.balanceOf(bob), 1 ether);
+    }
+
+    function test_transfer_insufficient_balance() public {
+        vm.prank(alice);
+        vm.expectRevert(InsufficientBalance.selector);
+        token.transfer(bob, 1);
+    }
+
+    function test_transfer_from() public {
+        token.mint(alice, 3 ether);
+        assertEq(token.balanceOf(alice), 3 ether);
+
+        vm.prank(alice);
+        token.transferFrom(alice, bob, 1 ether);
+        assertEq(token.balanceOf(alice), 2 ether);
+        assertEq(token.balanceOf(bob), 1 ether);
+    }
+
+    function test_transfer_from_insufficient_balance() public {
+        vm.prank(alice);
+        vm.expectRevert(InsufficientBalance.selector);
+        token.transferFrom(alice, bob, 1);
+    }
+
     function test_decimals() public {
         assertEq(token.decimals(), 18);
     }
@@ -44,6 +88,9 @@ contract TokenTest is Test {
 
 interface Token {
     function mint(address, uint256) external;
+    function burn(address, uint256) external;
+    function transfer(address, uint256) external;
+    function transferFrom(address, address, uint256) external;
     function balanceOf(address) external view returns (uint256);
     function decimals() external view returns (uint256);
     function totalSupply() external view returns (uint256);

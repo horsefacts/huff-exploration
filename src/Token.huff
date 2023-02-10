@@ -1,11 +1,15 @@
 /* Interface */
 #define function mint(address,uint256) nonpayable returns ()
+#define function burn(address,uint256) nonpayable returns ()
+#define function transfer(address,uint256) nonpayable returns ()
+#define function transferFrom(address,address,uint256) nonpayable returns ()
+
+#define function totalSupply() nonpayable returns (uint256)
 #define function balanceOf(address) nonpayable returns (uint256)
 
 #define function decimals() nonpayable returns (uint256)
 #define function name() nonpayable returns (string)
 #define function symbol() nonpayable returns (string)
-#define function totalSupply() nonpayable returns (uint256)
 
 // bytes32("token.storage.balanceOf")
 #define constant BALANCE_OF = 0x746f6b656e2e73746f726167652e62616c616e63654f66000000000000000000 
@@ -21,6 +25,9 @@
 #define constant SYMBOL_LEN = 0x4
 
 #define constant DECIMALS = 0x12
+
+// InsufficientBalance()
+#define constant INSUFFICIENT_BALANCE = 0xf4d678b800000000000000000000000000000000000000000000000000000000
 
 #define macro EIP_1967_SLOT() = takes (1) returns (1) {
                            // [bytes32_slot_name]
@@ -79,18 +86,27 @@
     0x00 mstore
 }
 
-#define macro RETURN(n) = takes (1) returns (0) {
+#define macro REVERT() = takes (1) returns (0) {
+    MSTORE_WORD()
+    0x04 0x00 revert
+}
+
+#define macro RETURN_N(n) = takes (1) returns (0) {
     <n>           // [num_words]
     0x20 mul      // [0x20 * num_words] 
     0x00 return
 }
 
+#define macro RETURN() = takes (0) returns (0) {
+   0x00 0x00 return 
+}
+
 #define macro RETURN1() = takes (0) returns (0) {
-    RETURN(0x01)
+    RETURN_N(0x01)
 }
 
 #define macro RETURN3() = takes (0) returns (0) {
-    RETURN(0x03)
+    RETURN_N(0x03)
 }
 
 #define macro RETURN_STR() = takes (0) returns (0) {
@@ -118,6 +134,10 @@
     ARGV(0x01)
 }
 
+#define macro ARGV2() = takes (0) returns (1) {
+    ARGV(0x02)
+}
+
 #define macro INCREMENT() = takes (2) returns (1) {
                   // [slot_addr, amount]
     dup1          // [slot_addr, slot_addr, amount]
@@ -128,9 +148,21 @@
     STORE_VALUE() // [amount] 
 }
 
+#define macro DECREMENT() = takes (2) returns (1) {
+                  // [slot_addr, amount]
+    dup1          // [slot_addr, slot_addr, amount]
+    READ_VALUE()  // [current_val, slot_addr, amount]
+    dup3          // [amount, current_val, slot_addr, amount]
+    swap1
+    sub           // [current_val + amount, slot_addr, amount]
+    swap1         // [slot_addr, new_amount, amount]
+    STORE_VALUE() // [amount] 
+}
+
 #define macro TOTAL_SUPPLY() = takes(0) returns (0) {
     [TOTAL_SUPPLY] READ_VALUE() RETURN_WORD()
 }
+
 
 #define macro DECIMALS() = takes (0) returns (0) {
     [DECIMALS] RETURN_WORD() 
@@ -146,7 +178,42 @@
 
 #define macro MINT() = takes (0) returns (0) {
     ARGV1() ARGV0() [BALANCE_OF] KEY() INCREMENT()
-    ARGV1() [TOTAL_SUPPLY] INCREMENT()   
+    ARGV1() [TOTAL_SUPPLY] INCREMENT()
+    RETURN()
+}
+
+#define macro BURN() = takes (0) returns (0) {
+    ARGV1() ARGV0() [BALANCE_OF] KEY() DECREMENT()
+    ARGV1() [TOTAL_SUPPLY] DECREMENT()
+    RETURN()
+}
+
+#define macro SUFFICIENT_BALANCE() = takes (2) returns (1) {
+    [BALANCE_OF] KEY() READ_VALUE() gt
+}
+
+#define macro THEN(label) = takes (0) returns (0) {
+    <label> jumpi
+}
+
+#define macro TRANSFER() = takes (0) returns (0) {
+    ARGV1() caller SUFFICIENT_BALANCE() THEN(doTransfer)
+    [INSUFFICIENT_BALANCE] REVERT()
+
+    doTransfer:
+        ARGV1() caller  [BALANCE_OF] KEY() DECREMENT()
+        ARGV1() ARGV0() [BALANCE_OF] KEY() INCREMENT()
+        RETURN()
+}
+
+#define macro TRANSFER_FROM() = takes (0) returns (0) {
+    ARGV2() ARGV0() SUFFICIENT_BALANCE() THEN(doTransferFrom)
+    [INSUFFICIENT_BALANCE] REVERT()
+    
+    doTransferFrom:
+        ARGV2() ARGV0() [BALANCE_OF] KEY() DECREMENT()
+        ARGV2() ARGV1() [BALANCE_OF] KEY() INCREMENT()
+        RETURN()
 }
 
 #define macro BALANCE_OF() = takes (0) returns (0) {
@@ -168,7 +235,7 @@
     0x00 calldataload 0xE0 shr
 }
 
-#define macro FALLBACK_REVERT() = takes (0) returns (0) {
+#define macro FALLTHROUGH_REVERT() = takes (0) returns (0) {
     0x00 0x00 revert
 }
 
@@ -176,16 +243,25 @@
     CALL_SIG()
 
     __FUNC_SIG(mint)         DEFJUMP(mint)
+    __FUNC_SIG(burn)         DEFJUMP(burn)
+    __FUNC_SIG(transfer)     DEFJUMP(transfer)
+    __FUNC_SIG(transferFrom) DEFJUMP(transferFrom)
     __FUNC_SIG(balanceOf)    DEFJUMP(balanceOf)
+    __FUNC_SIG(totalSupply)  DEFJUMP(totalSupply)
     __FUNC_SIG(name)         DEFJUMP(name)
     __FUNC_SIG(symbol)       DEFJUMP(symbol)
     __FUNC_SIG(decimals)     DEFJUMP(decimals)
-    __FUNC_SIG(totalSupply)  DEFJUMP(totalSupply)
 
-    FALLBACK_REVERT()
+    FALLTHROUGH_REVERT()
 
     mint:
         MINT()
+    burn:
+        BURN()
+    transfer:
+        TRANSFER()
+    transferFrom:
+        TRANSFER_FROM()
     balanceOf:
         BALANCE_OF()
     decimals:
@@ -198,3 +274,4 @@
         TOTAL_SUPPLY()
 
 }
+
