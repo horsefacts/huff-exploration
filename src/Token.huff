@@ -70,6 +70,11 @@
     READ_VALUE()
 }
 
+#define macro KEY_IN(map) = takes (1) returns (1) {
+    <map>
+    HASH_MAP_SLOT()
+}
+
 #define macro KEY() = takes (2) returns (1) {
     HASH_MAP_SLOT()
 }
@@ -92,7 +97,8 @@
     0x00 mstore
 }
 
-#define macro REVERT() = takes (1) returns (0) {
+#define macro REVERT(error) = takes (0) returns (0) {
+    <error>
     MSTORE_WORD()
     0x04 0x00 revert
 }
@@ -165,13 +171,36 @@
     STORE_VALUE() // [amount] 
 }
 
+#define macro GTE() = takes(2) returns (1) {
+          // [a, b]
+    swap1 // [b, a]
+    dup1  // [b, b, a]
+    dup3  // [a, b, b, a]
+    gt    // [a > b, b, a]
+    swap3 // [a, b, a > b]
+    eq    // [a == b, a > b]
+    or
+}
+
 #define macro THEN(label) = takes (0) returns (0) {
     <label> jumpi
 }
 
 #define macro SUFFICIENT_BALANCE() = takes (2) returns (1) {
     // [account, amount]
-    [BALANCE_OF] KEY() READ_VALUE() gt
+    KEY_IN(BALANCE_OF) READ_VALUE() gt
+}
+
+#define macro CALLER_ALLOWANCE() = takes (1) returns (1) {
+    KEY_IN(ALLOWANCES) // [allowances_slot, amount]
+    caller             // [caller, allowances_slot, amount]
+    KEY()
+    READ_VALUE()       // [allowance, amount] 
+}
+
+#define macro AMOUNT_APPROVED() = takes (1) returns (1) {
+    // [account, amount]
+    CALLER_ALLOWANCE() GTE()
 }
 
 #define macro TOTAL_SUPPLY() = takes(0) returns (0) {
@@ -191,78 +220,53 @@
 }
 
 #define macro MINT() = takes (0) returns (0) {
-    ARGV1() ARGV0() [BALANCE_OF] KEY() INCREMENT()
+    ARGV1() ARGV0() KEY_IN(BALANCE_OF) INCREMENT()
     ARGV1() [TOTAL_SUPPLY] INCREMENT()
     RETURN()
 }
 
 #define macro BURN() = takes (0) returns (0) {
-    ARGV1() ARGV0() [BALANCE_OF] KEY() DECREMENT()
+    ARGV1() ARGV0() KEY_IN(BALANCE_OF) DECREMENT()
     ARGV1() [TOTAL_SUPPLY] DECREMENT()
     RETURN()
 }
 
 #define macro APPROVE() = takes (0) returns (0) {
-    ARGV1() caller [ALLOWANCES] KEY() ARGV0() KEY() STORE_VALUE() 
+    ARGV1() caller KEY_IN(ALLOWANCES) ARGV0() KEY() STORE_VALUE() 
     RETURN()
 }
 
 #define macro ALLOWANCE() = takes (0) returns (0) {
-    ARGV0() [ALLOWANCES] KEY() ARGV1() READ_KEY()
+    ARGV0() KEY_IN(ALLOWANCES) ARGV1() READ_KEY()
     RETURN_WORD()
 }
 
 #define macro TRANSFER() = takes (0) returns (0) {
     ARGV1() caller SUFFICIENT_BALANCE() THEN(doTransfer)
-    [INSUFFICIENT_BALANCE] REVERT()
+    REVERT(INSUFFICIENT_BALANCE)
 
     doTransfer:
-        ARGV1() caller  [BALANCE_OF] KEY() DECREMENT()
-        ARGV1() ARGV0() [BALANCE_OF] KEY() INCREMENT()
+        ARGV1() caller  KEY_IN(BALANCE_OF) DECREMENT()
+        ARGV1() ARGV0() KEY_IN(BALANCE_OF) INCREMENT()
         RETURN()
 }
 
-#define macro CALLER_ALLOWANCE() = takes (1) returns (1) {
-    [ALLOWANCES] // [allowances, account, amount]
-    KEY()        // [allowances_slot, amount]
-    caller       // [caller, allowances_slot, amount]
-    KEY()
-    READ_VALUE() // [allowance, amount] 
-}
-
-#define macro AMOUNT_APPROVED() = takes (1) returns (1) {
-    // [account, amount]
-    CALLER_ALLOWANCE() GTE()
-}
-
-#define macro GTE() = takes(2) returns (1) {
-          // [a, b]
-    swap1 // [b, a]
-    dup1  // [b, b, a]
-    dup3  // [a, b, b, a]
-    gt    // [a > b, b, a]
-    swap3 // [a, b, a > b]
-    eq    // [a == b, a > b]
-    or
-}
-
 #define macro TRANSFER_FROM() = takes (0) returns (0) {
-    0x42069 0x00 mstore
     ARGV2() ARGV0() AMOUNT_APPROVED() THEN(checkBalance)
-    [INSUFFICIENT_ALLOWANCE] REVERT()
+    REVERT(INSUFFICIENT_ALLOWANCE)
 
     checkBalance:
         ARGV2() ARGV0() SUFFICIENT_BALANCE() THEN(doTransferFrom)
-        [INSUFFICIENT_BALANCE] REVERT()
+        REVERT(INSUFFICIENT_BALANCE)
     
     doTransferFrom:
-        ARGV2() ARGV0() [BALANCE_OF] KEY() DECREMENT()
-        ARGV2() ARGV1() [BALANCE_OF] KEY() INCREMENT()
+        ARGV2() ARGV0() KEY_IN(BALANCE_OF) DECREMENT()
+        ARGV2() ARGV1() KEY_IN(BALANCE_OF) INCREMENT()
         RETURN()
 }
 
 #define macro BALANCE_OF() = takes (0) returns (0) {
-    ARGV0() [BALANCE_OF] KEY() READ_VALUE()     
+    ARGV0() KEY_IN(BALANCE_OF) READ_VALUE()     
     RETURN_WORD()
 }
 
