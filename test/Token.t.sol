@@ -14,6 +14,9 @@ contract TokenTest is Test {
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
 
+    event Approval(address indexed, address indexed, uint256);
+    event Transfer(address indexed, address indexed, uint256);
+
     function setUp() public {
         token = Token(HuffDeployer.deploy("Token"));
     }
@@ -52,6 +55,14 @@ contract TokenTest is Test {
         assertEq(token.balanceOf(bob), 1 ether);
     }
 
+    function test_transfer_return_value() public {
+        token.mint(alice, 3 ether);
+
+        vm.prank(alice);
+        bool success = token.transfer(bob, 1 ether);
+        assertTrue(success);
+    }
+
     function test_transfer_insufficient_balance() public {
         vm.prank(alice);
         vm.expectRevert(InsufficientBalance.selector);
@@ -85,6 +96,54 @@ contract TokenTest is Test {
         vm.stopPrank();
     }
 
+    function test_transfer_from_reduces_allowancee() public {
+        token.mint(alice, 3 ether);
+
+        vm.prank(alice);
+        token.approve(bob, 3 ether);
+
+        assertEq(token.allowance(alice, bob), 3 ether);
+
+        vm.prank(bob);
+        token.transferFrom(alice, bob, 1 ether);
+
+        assertEq(token.allowance(alice, bob), 2 ether);
+    }
+
+    function test_transfer_from_return_value() public {
+        token.mint(alice, 3 ether);
+
+        vm.prank(alice);
+        token.approve(bob, 3 ether);
+
+        vm.prank(bob);
+        bool success = token.transferFrom(alice, bob, 1 ether);
+        assertTrue(success);
+    }
+
+    function test_transfer_from_emits_event() public {
+        token.mint(alice, 3 ether);
+
+        vm.prank(alice);
+        token.approve(bob, 3 ether);
+
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(alice, bob, 1 ether);
+
+        vm.prank(bob);
+        token.transferFrom(alice, bob, 1 ether);
+    }
+
+    function test_transfer_emits_event() public {
+        token.mint(alice, 1 ether);
+
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(alice, bob, 1 ether);
+
+        vm.prank(alice);
+        token.transfer(bob, 1 ether);
+    }
+
     function test_approval() public {
         vm.prank(alice);
         token.approve(bob, 100 ether);
@@ -95,6 +154,20 @@ contract TokenTest is Test {
         token.approve(bob, 5 ether);
 
         assertEq(token.allowance(alice, bob), 5 ether);
+    }
+
+    function test_approve_return_value() public {
+        vm.prank(alice);
+        bool success = token.approve(bob, 100 ether);
+        assertTrue(success);
+    }
+
+    function test_approve_emits_event() public {
+        vm.expectEmit(true, true, false, true);
+        emit Approval(alice, bob, 100 ether);
+
+        vm.prank(alice);
+        token.approve(bob, 100 ether);
     }
 
     function test_decimals() public {
@@ -113,9 +186,9 @@ contract TokenTest is Test {
 interface Token {
     function mint(address, uint256) external;
     function burn(address, uint256) external;
-    function transfer(address, uint256) external;
-    function transferFrom(address, address, uint256) external;
-    function approve(address, uint256) external;
+    function transfer(address, uint256) external returns (bool);
+    function transferFrom(address, address, uint256) external returns (bool);
+    function approve(address, uint256) external returns (bool);
     function balanceOf(address) external view returns (uint256);
     function allowance(address, address) external view returns (uint256);
     function decimals() external view returns (uint256);

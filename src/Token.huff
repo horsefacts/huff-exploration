@@ -1,9 +1,9 @@
-/* Interface */
+// Interface
 #define function mint(address,uint256) nonpayable returns ()
 #define function burn(address,uint256) nonpayable returns ()
-#define function transfer(address,uint256) nonpayable returns ()
-#define function transferFrom(address,address,uint256) nonpayable returns ()
-#define function approve(address,uint256) nonpayable returns ()
+#define function transfer(address,uint256) nonpayable returns (bool)
+#define function transferFrom(address,address,uint256) nonpayable returns (bool)
+#define function approve(address,uint256) nonpayable returns (bool)
 
 #define function totalSupply() nonpayable returns (uint256)
 #define function balanceOf(address) nonpayable returns (uint256)
@@ -13,6 +13,17 @@
 #define function name() nonpayable returns (string)
 #define function symbol() nonpayable returns (string)
 
+// Events
+#define event Approval(address indexed, address indexed, uint256)
+#define event Transfer(address indexed, address indexed, uint256)
+
+// Errors
+// InsufficientBalance()
+#define constant INSUFFICIENT_BALANCE = 0xf4d678b800000000000000000000000000000000000000000000000000000000
+// InsufficientAllowance()
+#define constant INSUFFICIENT_ALLOWANCE = 0x13be252b00000000000000000000000000000000000000000000000000000000
+
+// Storage
 // bytes32("token.storage.balanceOf")
 #define constant BALANCE_OF = 0x746f6b656e2e73746f726167652e62616c616e63654f66000000000000000000 
 // bytes32("token.storage.totalSupply")
@@ -20,6 +31,7 @@
 // bytes32("token.storage.allowances")
 #define constant ALLOWANCES = 0x746f6b656e2e73746f726167652e616c6c6f77616e6365730000000000000000
 
+// Constants
 // bytes32("MyCoolToken")
 #define constant NAME = 0x4d79436f6f6c546f6b656e000000000000000000000000000000000000000000
 #define constant NAME_LEN = 0xb
@@ -30,10 +42,23 @@
 
 #define constant DECIMALS = 0x12
 
-// InsufficientBalance()
-#define constant INSUFFICIENT_BALANCE = 0xf4d678b800000000000000000000000000000000000000000000000000000000
-// InsufficientAllowance()
-#define constant INSUFFICIENT_ALLOWANCE = 0x13be252b00000000000000000000000000000000000000000000000000000000
+#define macro DEFJUMP(label) = takes (2) returns (1) {
+            // [func_sig, call_sig]
+    <label> // [label, func_sig, call_sig]
+    swap1   // [func_sig, label, call_sig]
+    dup3    // [call_sig, func_sig, label, call_sig]
+    eq      // [1, label, call_sig]
+    swap1   // [label, 1, call_sig]
+    jumpi   // [call_sig]
+}
+
+#define macro CALL_SIG() = takes (0) returns (1) {
+    0x00 calldataload 0xE0 shr
+}
+
+#define macro FALLTHROUGH_REVERT() = takes (0) returns (0) {
+    0x00 0x00 revert
+}
 
 #define macro EIP_1967_SLOT() = takes (1) returns (1) {
                            // [bytes32_slot_name]
@@ -131,6 +156,12 @@
     RETURN1()
 }
 
+#define macro RETURN_TRUE() = takes (0) returns (0) {
+    0x01
+    MSTORE_WORD() 
+    RETURN1()
+}
+
 #define macro ARGV(n) = takes (0) returns (1) {
     <n>
     0x20 mul      // [0x20 * calldata_word]
@@ -188,7 +219,7 @@
 
 #define macro SUFFICIENT_BALANCE() = takes (2) returns (1) {
     // [account, amount]
-    KEY_IN(BALANCE_OF) READ_VALUE() gt
+    KEY_IN(BALANCE_OF) READ_VALUE() GTE()
 }
 
 #define macro CALLER_ALLOWANCE() = takes (1) returns (1) {
@@ -201,6 +232,16 @@
 #define macro AMOUNT_APPROVED() = takes (1) returns (1) {
     // [account, amount]
     CALLER_ALLOWANCE() GTE()
+}
+
+#define macro BALANCE_OF() = takes (0) returns (0) {
+    ARGV0() KEY_IN(BALANCE_OF) READ_VALUE()     
+    RETURN_WORD()
+}
+
+#define macro ALLOWANCE() = takes (0) returns (0) {
+    ARGV0() KEY_IN(ALLOWANCES) ARGV1() READ_KEY()
+    RETURN_WORD()
 }
 
 #define macro TOTAL_SUPPLY() = takes(0) returns (0) {
@@ -231,14 +272,24 @@
     RETURN()
 }
 
-#define macro APPROVE() = takes (0) returns (0) {
-    ARGV1() caller KEY_IN(ALLOWANCES) ARGV0() KEY() STORE_VALUE() 
-    RETURN()
+#define macro EMIT_APPROVAL() = takes (3) returns (0) {
+                           // [value, from, to]
+    MSTORE_WORD()          // [from, to]
+    __EVENT_HASH(Approval) // [sig, from, to]
+    0x20 0x00 log3
 }
 
-#define macro ALLOWANCE() = takes (0) returns (0) {
-    ARGV0() KEY_IN(ALLOWANCES) ARGV1() READ_KEY()
-    RETURN_WORD()
+#define macro APPROVE() = takes (0) returns (0) {
+    ARGV1() caller KEY_IN(ALLOWANCES) ARGV0() KEY() STORE_VALUE() 
+    ARGV0() caller ARGV1() EMIT_APPROVAL()
+    RETURN_TRUE()
+}
+
+#define macro EMIT_TRANSFER() = takes (3) returns (0) {
+                           // [value, from, to]
+    MSTORE_WORD()          // [from, to]
+    __EVENT_HASH(Transfer) // [sig, from, to]
+    0x20 0x00 log3
 }
 
 #define macro TRANSFER() = takes (0) returns (0) {
@@ -248,7 +299,8 @@
     doTransfer:
         ARGV1() caller  KEY_IN(BALANCE_OF) DECREMENT()
         ARGV1() ARGV0() KEY_IN(BALANCE_OF) INCREMENT()
-        RETURN()
+        ARGV0() caller ARGV1() EMIT_TRANSFER()
+        RETURN_TRUE()
 }
 
 #define macro TRANSFER_FROM() = takes (0) returns (0) {
@@ -262,30 +314,9 @@
     doTransferFrom:
         ARGV2() ARGV0() KEY_IN(BALANCE_OF) DECREMENT()
         ARGV2() ARGV1() KEY_IN(BALANCE_OF) INCREMENT()
-        RETURN()
-}
-
-#define macro BALANCE_OF() = takes (0) returns (0) {
-    ARGV0() KEY_IN(BALANCE_OF) READ_VALUE()     
-    RETURN_WORD()
-}
-
-#define macro DEFJUMP(label) = takes (2) returns (1) {
-            // [func_sig, call_sig]
-    <label> // [label, func_sig, call_sig]
-    swap1   // [func_sig, label, call_sig]
-    dup3    // [call_sig, func_sig, label, call_sig]
-    eq      // [1, label, call_sig]
-    swap1   // [label, 1, call_sig]
-    jumpi   // [call_sig]
-}
-
-#define macro CALL_SIG() = takes (0) returns (1) {
-    0x00 calldataload 0xE0 shr
-}
-
-#define macro FALLTHROUGH_REVERT() = takes (0) returns (0) {
-    0x00 0x00 revert
+        ARGV2() ARGV0() KEY_IN(ALLOWANCES) caller KEY() DECREMENT() 
+        ARGV1() ARGV0() ARGV2() EMIT_TRANSFER()
+        RETURN_TRUE()
 }
 
 #define macro MAIN() = takes (0) returns (0) {
@@ -327,6 +358,5 @@
         SYMBOL()
     totalSupply:
         TOTAL_SUPPLY()
-
 }
 
