@@ -3,9 +3,11 @@
 #define function burn(address,uint256) nonpayable returns ()
 #define function transfer(address,uint256) nonpayable returns ()
 #define function transferFrom(address,address,uint256) nonpayable returns ()
+#define function approve(address,uint256) nonpayable returns ()
 
 #define function totalSupply() nonpayable returns (uint256)
 #define function balanceOf(address) nonpayable returns (uint256)
+#define function allowance(address,address) nonpayable returns (uint256)
 
 #define function decimals() nonpayable returns (uint256)
 #define function name() nonpayable returns (string)
@@ -15,6 +17,8 @@
 #define constant BALANCE_OF = 0x746f6b656e2e73746f726167652e62616c616e63654f66000000000000000000 
 // bytes32("token.storage.totalSupply")
 #define constant TOTAL_SUPPLY = 0x746f6b656e2e73746f726167652e746f74616c537570706c7900000000000000 
+// bytes32("token.storage.allowances")
+#define constant ALLOWANCES = 0x746f6b656e2e73746f726167652e616c6c6f77616e6365730000000000000000
 
 // bytes32("MyCoolToken")
 #define constant NAME = 0x4d79436f6f6c546f6b656e000000000000000000000000000000000000000000
@@ -28,6 +32,8 @@
 
 // InsufficientBalance()
 #define constant INSUFFICIENT_BALANCE = 0xf4d678b800000000000000000000000000000000000000000000000000000000
+// InsufficientAllowance()
+#define constant INSUFFICIENT_ALLOWANCE = 0x13be252b00000000000000000000000000000000000000000000000000000000
 
 #define macro EIP_1967_SLOT() = takes (1) returns (1) {
                            // [bytes32_slot_name]
@@ -159,10 +165,18 @@
     STORE_VALUE() // [amount] 
 }
 
+#define macro THEN(label) = takes (0) returns (0) {
+    <label> jumpi
+}
+
+#define macro SUFFICIENT_BALANCE() = takes (2) returns (1) {
+    // [account, amount]
+    [BALANCE_OF] KEY() READ_VALUE() gt
+}
+
 #define macro TOTAL_SUPPLY() = takes(0) returns (0) {
     [TOTAL_SUPPLY] READ_VALUE() RETURN_WORD()
 }
-
 
 #define macro DECIMALS() = takes (0) returns (0) {
     [DECIMALS] RETURN_WORD() 
@@ -188,12 +202,14 @@
     RETURN()
 }
 
-#define macro SUFFICIENT_BALANCE() = takes (2) returns (1) {
-    [BALANCE_OF] KEY() READ_VALUE() gt
+#define macro APPROVE() = takes (0) returns (0) {
+    ARGV1() caller [ALLOWANCES] KEY() ARGV0() KEY() STORE_VALUE() 
+    RETURN()
 }
 
-#define macro THEN(label) = takes (0) returns (0) {
-    <label> jumpi
+#define macro ALLOWANCE() = takes (0) returns (0) {
+    ARGV0() [ALLOWANCES] KEY() ARGV1() READ_KEY()
+    RETURN_WORD()
 }
 
 #define macro TRANSFER() = takes (0) returns (0) {
@@ -206,9 +222,38 @@
         RETURN()
 }
 
+#define macro CALLER_ALLOWANCE() = takes (1) returns (1) {
+    [ALLOWANCES] // [allowances, account, amount]
+    KEY()        // [allowances_slot, amount]
+    caller       // [caller, allowances_slot, amount]
+    KEY()
+    READ_VALUE() // [allowance, amount] 
+}
+
+#define macro AMOUNT_APPROVED() = takes (1) returns (1) {
+    // [account, amount]
+    CALLER_ALLOWANCE() GTE()
+}
+
+#define macro GTE() = takes(2) returns (1) {
+          // [a, b]
+    swap1 // [b, a]
+    dup1  // [b, b, a]
+    dup3  // [a, b, b, a]
+    gt    // [a > b, b, a]
+    swap3 // [a, b, a > b]
+    eq    // [a == b, a > b]
+    or
+}
+
 #define macro TRANSFER_FROM() = takes (0) returns (0) {
-    ARGV2() ARGV0() SUFFICIENT_BALANCE() THEN(doTransferFrom)
-    [INSUFFICIENT_BALANCE] REVERT()
+    0x42069 0x00 mstore
+    ARGV2() ARGV0() AMOUNT_APPROVED() THEN(checkBalance)
+    [INSUFFICIENT_ALLOWANCE] REVERT()
+
+    checkBalance:
+        ARGV2() ARGV0() SUFFICIENT_BALANCE() THEN(doTransferFrom)
+        [INSUFFICIENT_BALANCE] REVERT()
     
     doTransferFrom:
         ARGV2() ARGV0() [BALANCE_OF] KEY() DECREMENT()
@@ -246,6 +291,8 @@
     __FUNC_SIG(burn)         DEFJUMP(burn)
     __FUNC_SIG(transfer)     DEFJUMP(transfer)
     __FUNC_SIG(transferFrom) DEFJUMP(transferFrom)
+    __FUNC_SIG(approve)      DEFJUMP(approve)
+    __FUNC_SIG(allowance)    DEFJUMP(allowance)
     __FUNC_SIG(balanceOf)    DEFJUMP(balanceOf)
     __FUNC_SIG(totalSupply)  DEFJUMP(totalSupply)
     __FUNC_SIG(name)         DEFJUMP(name)
@@ -262,6 +309,10 @@
         TRANSFER()
     transferFrom:
         TRANSFER_FROM()
+    approve:
+        APPROVE()
+    allowance:
+        ALLOWANCE()
     balanceOf:
         BALANCE_OF()
     decimals:

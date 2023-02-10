@@ -6,6 +6,7 @@ import "forge-std/Test.sol";
 import "forge-std/console.sol";
 
 error InsufficientBalance();
+error InsufficientAllowance();
 
 contract TokenTest is Test {
     Token public token;
@@ -61,16 +62,39 @@ contract TokenTest is Test {
         token.mint(alice, 3 ether);
         assertEq(token.balanceOf(alice), 3 ether);
 
-        vm.prank(alice);
+        vm.startPrank(alice);
+        token.approve(alice, 1 ether);
         token.transferFrom(alice, bob, 1 ether);
         assertEq(token.balanceOf(alice), 2 ether);
         assertEq(token.balanceOf(bob), 1 ether);
+        vm.stopPrank();
     }
 
     function test_transfer_from_insufficient_balance() public {
-        vm.prank(alice);
+        vm.startPrank(alice);
+        token.approve(alice, 1);
+
         vm.expectRevert(InsufficientBalance.selector);
         token.transferFrom(alice, bob, 1);
+        vm.stopPrank();
+    }
+
+    function test_transfer_from_insufficient_allowance() public {
+        vm.expectRevert(InsufficientAllowance.selector);
+        token.transferFrom(alice, bob, 1);
+        vm.stopPrank();
+    }
+
+    function test_approval() public {
+        vm.prank(alice);
+        token.approve(bob, 100 ether);
+
+        assertEq(token.allowance(alice, bob), 100 ether);
+
+        vm.prank(alice);
+        token.approve(bob, 5 ether);
+
+        assertEq(token.allowance(alice, bob), 5 ether);
     }
 
     function test_decimals() public {
@@ -91,7 +115,9 @@ interface Token {
     function burn(address, uint256) external;
     function transfer(address, uint256) external;
     function transferFrom(address, address, uint256) external;
+    function approve(address, uint256) external;
     function balanceOf(address) external view returns (uint256);
+    function allowance(address, address) external view returns (uint256);
     function decimals() external view returns (uint256);
     function totalSupply() external view returns (uint256);
     function name() external view returns (string memory);
