@@ -50,11 +50,9 @@
     // leaves the call signature on the stack.
 
             // [func_sig, call_sig]
-    <label> // [label, func_sig, call_sig]
-    swap1   // [func_sig, label, call_sig]
-    dup3    // [call_sig, func_sig, label, call_sig]
-    eq      // [1, label, call_sig]
-    swap1   // [label, 1, call_sig]
+    dup2    // [call_sig, func_sig, call_sig]
+    eq      // [1, call_sig]
+    <label> // [label, 1, call_sig]
     jumpi   // [call_sig]
 }
 
@@ -453,7 +451,6 @@
 
         RETURN_TRUE()
 }
-
 
 #define macro TRANSFER_FROM() = takes (0) returns (0) {
     // ARGV0: from
