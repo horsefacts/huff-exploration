@@ -53,6 +53,9 @@ contract TokenTest is Test {
         token.transfer(bob, 1 ether);
         assertEq(token.balanceOf(alice), 2 ether);
         assertEq(token.balanceOf(bob), 1 ether);
+
+        vm.prank(bob);
+        token.transfer(alice, 0);
     }
 
     function test_transfer_return_value() public {
@@ -93,10 +96,29 @@ contract TokenTest is Test {
     function test_transfer_from_insufficient_allowance() public {
         vm.expectRevert(InsufficientAllowance.selector);
         token.transferFrom(alice, bob, 1);
-        vm.stopPrank();
+
+        token.mint(alice, 1 ether);
+        vm.prank(alice);
+        token.approve(bob, 0.5 ether);
+
+        assertEq(token.allowance(alice, bob), 0.5 ether);
+
+        vm.expectRevert(InsufficientAllowance.selector);
+        vm.prank(bob);
+        token.transferFrom(alice, bob, 1 ether);
     }
 
-    function test_transfer_from_reduces_allowancee() public {
+    function test_transfer_from_allowance() public {
+        token.mint(alice, 1 ether);
+        vm.prank(alice);
+        token.approve(bob, 0.5 ether);
+
+        vm.prank(bob);
+        vm.expectRevert(InsufficientAllowance.selector);
+        token.transferFrom(alice, bob, 1 ether);
+    }
+
+    function test_transfer_from_reduces_allowance() public {
         token.mint(alice, 3 ether);
 
         vm.prank(alice);
@@ -108,6 +130,20 @@ contract TokenTest is Test {
         token.transferFrom(alice, bob, 1 ether);
 
         assertEq(token.allowance(alice, bob), 2 ether);
+    }
+
+    function test_transfer_from_max_approval_does_not_reduce_allowance() public {
+        token.mint(alice, 3 ether);
+
+        vm.prank(alice);
+        token.approve(bob, type(uint256).max);
+
+        assertEq(token.allowance(alice, bob), type(uint256).max);
+
+        vm.prank(bob);
+        token.transferFrom(alice, bob, 1 ether);
+
+        assertEq(token.allowance(alice, bob), type(uint256).max);
     }
 
     function test_transfer_from_return_value() public {

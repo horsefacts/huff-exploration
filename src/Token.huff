@@ -25,9 +25,9 @@
 
 // Storage
 // bytes32("token.storage.balanceOf")
-#define constant BALANCE_OF = 0x746f6b656e2e73746f726167652e62616c616e63654f66000000000000000000 
+#define constant BALANCE_OF = 0x746f6b656e2e73746f726167652e62616c616e63654f66000000000000000000
 // bytes32("token.storage.totalSupply")
-#define constant TOTAL_SUPPLY = 0x746f6b656e2e73746f726167652e746f74616c537570706c7900000000000000 
+#define constant TOTAL_SUPPLY = 0x746f6b656e2e73746f726167652e746f74616c537570706c7900000000000000
 // bytes32("token.storage.allowances")
 #define constant ALLOWANCES = 0x746f6b656e2e73746f726167652e616c6c6f77616e6365730000000000000000
 
@@ -41,8 +41,14 @@
 #define constant SYMBOL_LEN = 0x4
 
 #define constant DECIMALS = 0x12
+#define constant MAX_UINT256 = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+#define constant ZERO_ADDRESS = 0x00
 
 #define macro DEFJUMP(label) = takes (2) returns (1) {
+    // Takes a 4 byte function signature and 4 byte call signature
+    // Jumps to the given label if signatures match, otherwise
+    // leaves the call signature on the stack.
+
             // [func_sig, call_sig]
     <label> // [label, func_sig, call_sig]
     swap1   // [func_sig, label, call_sig]
@@ -53,54 +59,85 @@
 }
 
 #define macro CALL_SIG() = takes (0) returns (1) {
+    // Loads the 4 byte call signature from calldata
+    // Returns call signature
     0x00 calldataload 0xE0 shr
 }
 
 #define macro FALLTHROUGH_REVERT() = takes (0) returns (0) {
+    // Revert with no data
     0x00 0x00 revert
 }
 
 #define macro EIP_1967_SLOT() = takes (1) returns (1) {
+    // Generate an EIP-1967 slot from a bytes32 ID.
+    // Takes slot "name" as a bytes32
+    // Returns uint256(keccak(slot name)) - 1 to the stack.
+
                            // [bytes32_slot_name]
-    0x00 mstore            // []          
+    0x00 mstore            // []
     0x01                   // [0x01]
     0x20 0x00 sha3         // [slot_name_hash, 0x01]
-    sub                    // [slot_name_hash - 0x01] 
+    sub                    // [slot_name_hash - 0x01]
 }
 
 #define macro HASH_MAP_SLOT() = takes (2) returns (1) {
+    // Generate a storage slot for a given hash map key.
+    // Takes hashmap name and key from the stack.
+    // Calculates slot as uint256(sha3(map_name . entry_key)) - 1
+    // Returns slot to the stack.
+
                    // [map_name, entry_key]
-    0x00 mstore    // [entry_key] 
+    0x00 mstore    // [entry_key]
     0x20 mstore    // []
-    0x01           // [0x01] 
+    0x01           // [0x01]
     0x40 0x00 sha3 // [sha3(map_name . entry_key), 0x01]
     sub            // [slot_name]
 }
 
 #define macro STORE_VALUE() = takes (2) returns (0) {
+    // Takes slot name and value
+    // Writes value to EIP-1967 slot with the given name
+
                     // [slot_name, value]
     EIP_1967_SLOT() // [slot_addr, value]
     sstore          // []
 }
 
 #define macro READ_VALUE() = takes (1) returns (1) {
-                    // [slot_name] 
+    // Takes slot name
+    // Reads value from EIP-1967 slot with the given name
+    // Returns value on the stack
+
+                    // [slot_name]
     EIP_1967_SLOT() // [slot_addr]
     sload           // [value]
 }
 
-#define macro READ_KEY() = takes (1) returns (1) {
+#define macro READ_KEY() = takes (2) returns (1) {
+    // Read value for a hash map key
+    // Takes hashmap name, key address
+    // Returns value
+
     // [map_slot_addr]
     HASH_MAP_SLOT()
     READ_VALUE()
 }
 
 #define macro KEY_IN(map) = takes (1) returns (1) {
+    // Get the slot address for a given hash map key
+    // Takes key address
+    // Returns slot
+
     <map>
     HASH_MAP_SLOT()
 }
 
 #define macro KEY() = takes (2) returns (1) {
+    // Get the slot address for a given hash map key
+    // Takes hashmap name, key address
+    // Returns slot
+
     HASH_MAP_SLOT()
 }
 
@@ -111,87 +148,117 @@
 }
 
 #define macro MSTORE_STR() = takes (2) returns (0) {
+    // Takes string length and string value from the stack
+    // Writes encoded string to memory starting at 0x00
+
     // [string_len, string]
     0x20 mstore
-    0x40 mstore 
+    0x40 mstore
     0x20 0x00 mstore
 }
 
 #define macro MSTORE_WORD() = takes (1) returns (0) {
+    // Takes one word from the stack
+    // Stores it in memory at 0x00
+
     // [value]
     0x00 mstore
 }
 
 #define macro REVERT(error) = takes (0) returns (0) {
+    // Revert with the given encoded error
     <error>
     MSTORE_WORD()
     0x04 0x00 revert
 }
 
 #define macro RETURN_N(n) = takes (1) returns (0) {
+    // Return n words of data, starting from 0x00
     <n>           // [num_words]
-    0x20 mul      // [0x20 * num_words] 
+    0x20 mul      // [0x20 * num_words]
     0x00 return
 }
 
 #define macro RETURN() = takes (0) returns (0) {
-   0x00 0x00 return 
+   // Return with empty returndata
+   0x00 0x00 return
 }
 
 #define macro RETURN1() = takes (0) returns (0) {
+   // Return with one word of data, starting from 0x00
     RETURN_N(0x01)
 }
 
 #define macro RETURN3() = takes (0) returns (0) {
+   // Return with three words of data, starting from 0x00
     RETURN_N(0x03)
 }
 
 #define macro RETURN_STR() = takes (0) returns (0) {
-    MSTORE_STR() 
+    // Takes one word from the stack.
+    // Writes it to returndata as a string and returns.
+    MSTORE_STR()
     RETURN3()
 }
 
 #define macro RETURN_WORD() = takes (0) returns (0) {
-    MSTORE_WORD() 
+    // Takes one word from the stack.
+    // Writes value to returndata and returns.
+    MSTORE_WORD()
     RETURN1()
 }
 
 #define macro RETURN_TRUE() = takes (0) returns (0) {
+    // Write boolean true to returndata and return.
     0x01
-    MSTORE_WORD() 
+    MSTORE_WORD()
     RETURN1()
 }
 
 #define macro ARGV(n) = takes (0) returns (1) {
+    // Read one word argument n from calldata.
     <n>
     0x20 mul      // [0x20 * calldata_word]
-    0x04 add      // [0x4 + 0x20 * calldata_word] 
+    0x04 add      // [0x4 + 0x20 * calldata_word]
     calldataload
 }
 
 #define macro ARGV0() = takes (0) returns (1) {
-    ARGV(0x00) 
+    // Read first one word argument from calldata.
+    ARGV(0x00)
 }
 
 #define macro ARGV1() = takes (0) returns (1) {
+    // Read second one word argument from calldata
     ARGV(0x01)
 }
 
 #define macro ARGV2() = takes (0) returns (1) {
+    // Read third one word argument from calldata
     ARGV(0x02)
 }
 
 #define macro INCREMENT() = takes (2) returns (1) {
+    // Takes a storage slot address and amount.
+    // Reads value from the slot, increments it by
+    // amount, and writes result to storage.
+    // Equivalent to +=.
+
                   // [slot_addr, amount]
     dup1          // [slot_addr, slot_addr, amount]
     READ_VALUE()  // [current_val, slot_addr, amount]
     dup3          // [amount, current_val, slot_addr, amount]
     add           // [current_val + amount, slot_addr, amount]
     swap1         // [slot_addr, new_amount, amount]
-    STORE_VALUE() // [amount] 
+    STORE_VALUE() // [amount]
 }
 
 #define macro DECREMENT() = takes (2) returns (1) {
+    // Takes a storage slot address and amount.
+    // Reads value from the slot, decrements it by
+    // amount, and writes result to storage.
+    // Equivalent to -=.
+
                   // [slot_addr, amount]
     dup1          // [slot_addr, slot_addr, amount]
     READ_VALUE()  // [current_val, slot_addr, amount]
@@ -199,129 +266,242 @@
     swap1
     sub           // [current_val + amount, slot_addr, amount]
     swap1         // [slot_addr, new_amount, amount]
-    STORE_VALUE() // [amount] 
+    STORE_VALUE() // [amount]
 }
 
 #define macro GTE() = takes(2) returns (1) {
+    // Takes values a and b from the stack.
+    // Returns 1 if a >= b, 0 otherwise.
+
           // [a, b]
     swap1 // [b, a]
     dup1  // [b, b, a]
     dup3  // [a, b, b, a]
     gt    // [a > b, b, a]
-    swap3 // [a, b, a > b]
+    swap2 // [a, b, a > b]
     eq    // [a == b, a > b]
     or
 }
 
-#define macro THEN(label) = takes (0) returns (0) {
+#define macro THEN(label) = takes (1) returns (0) {
+    // Alias for JUMPI
+
     <label> jumpi
 }
 
-#define macro SUFFICIENT_BALANCE() = takes (2) returns (1) {
-    // [account, amount]
-    KEY_IN(BALANCE_OF) READ_VALUE() GTE()
-}
+#define macro NEXT(label) = takes (1) returns (1) {
+    // Alias for JUMP
 
-#define macro CALLER_ALLOWANCE() = takes (1) returns (1) {
-    KEY_IN(ALLOWANCES) // [allowances_slot, amount]
-    caller             // [caller, allowances_slot, amount]
-    KEY()
-    READ_VALUE()       // [allowance, amount] 
-}
-
-#define macro AMOUNT_APPROVED() = takes (1) returns (1) {
-    // [account, amount]
-    CALLER_ALLOWANCE() GTE()
-}
-
-#define macro BALANCE_OF() = takes (0) returns (0) {
-    ARGV0() KEY_IN(BALANCE_OF) READ_VALUE()     
-    RETURN_WORD()
-}
-
-#define macro ALLOWANCE() = takes (0) returns (0) {
-    ARGV0() KEY_IN(ALLOWANCES) ARGV1() READ_KEY()
-    RETURN_WORD()
-}
-
-#define macro TOTAL_SUPPLY() = takes(0) returns (0) {
-    [TOTAL_SUPPLY] READ_VALUE() RETURN_WORD()
-}
-
-#define macro DECIMALS() = takes (0) returns (0) {
-    [DECIMALS] RETURN_WORD() 
-}
-
-#define macro NAME() = takes (0) returns (0) {
-    [NAME] [NAME_LEN] RETURN_STR()
-}
-
-#define macro SYMBOL() = takes (0) returns (0) {
-    [SYMBOL] [SYMBOL_LEN] RETURN_STR()
-}
-
-#define macro MINT() = takes (0) returns (0) {
-    ARGV1() ARGV0() KEY_IN(BALANCE_OF) INCREMENT()
-    ARGV1() [TOTAL_SUPPLY] INCREMENT()
-    RETURN()
-}
-
-#define macro BURN() = takes (0) returns (0) {
-    ARGV1() ARGV0() KEY_IN(BALANCE_OF) DECREMENT()
-    ARGV1() [TOTAL_SUPPLY] DECREMENT()
-    RETURN()
-}
-
-#define macro EMIT_APPROVAL() = takes (3) returns (0) {
-                           // [value, from, to]
-    MSTORE_WORD()          // [from, to]
-    __EVENT_HASH(Approval) // [sig, from, to]
-    0x20 0x00 log3
-}
-
-#define macro APPROVE() = takes (0) returns (0) {
-    ARGV1() caller KEY_IN(ALLOWANCES) ARGV0() KEY() STORE_VALUE() 
-    ARGV0() caller ARGV1() EMIT_APPROVAL()
-    RETURN_TRUE()
+    <label> jump
 }
 
 #define macro EMIT_TRANSFER() = takes (3) returns (0) {
+    // Emit a Transfer event
+    // Takes value, from, and to from the stack
+
                            // [value, from, to]
     MSTORE_WORD()          // [from, to]
     __EVENT_HASH(Transfer) // [sig, from, to]
     0x20 0x00 log3
 }
 
+#define macro EMIT_APPROVAL() = takes (3) returns (0) {
+    // Emit an Approval event
+    // Takes value, from, and to from the stack
+
+                           // [value, from, to]
+    MSTORE_WORD()          // [from, to]
+    __EVENT_HASH(Approval) // [sig, from, to]
+    0x20 0x00 log3
+}
+
+#define macro UNLIMITED_ALLOWANCE() = takes (1) returns (1) {
+    // Takes account address from the stack.
+    // Returns 1 if caller has max approval
+    CALLER_ALLOWANCE() [MAX_UINT256] eq
+}
+
+#define macro SUFFICIENT_BALANCE() = takes (2) returns (1) {
+    // Takes account address and amount from the stack.
+    // Returns 1 if account balance is >= amount
+
+    // [account, amount]
+    KEY_IN(BALANCE_OF) READ_VALUE() GTE()
+}
+
+#define macro CALLER_ALLOWANCE() = takes (1) returns (1) {
+    // Takes account address from the stack.
+    // Returns caller allowance for given account address.
+
+    KEY_IN(ALLOWANCES) // [allowances_slot, amount]
+    caller             // [caller, allowances_slot, amount]
+    KEY()
+    READ_VALUE()       // [allowance, amount]
+}
+
+#define macro AMOUNT_APPROVED() = takes (1) returns (1) {
+    // Takes account address and amount from the stack.
+    // Returns 1 if allowance is >= amount
+
+    // [account, amount]
+    CALLER_ALLOWANCE() GTE()
+}
+
+// Public interface macros
+
+#define macro BALANCE_OF() = takes (0) returns (0) {
+    // ARGV0: account
+
+    // Read "token.storage.balanceOf[account]"
+    ARGV0() KEY_IN(BALANCE_OF) READ_VALUE()
+    RETURN_WORD()
+}
+
+#define macro ALLOWANCE() = takes (0) returns (0) {
+    // ARGV0: owner
+    // ARGV1: spender
+
+    // Read "token.storage.allowances[owner][spender]"
+    ARGV0() KEY_IN(ALLOWANCES) ARGV1() READ_KEY()
+    RETURN_WORD()
+}
+
+#define macro TOTAL_SUPPLY() = takes(0) returns (0) {
+    // Read value from "token.storage.totalSupply"
+    [TOTAL_SUPPLY] READ_VALUE() RETURN_WORD()
+}
+
+#define macro DECIMALS() = takes (0) returns (0) {
+    // Return the DECIMALS constant as a word
+    [DECIMALS] RETURN_WORD()
+}
+
+#define macro NAME() = takes (0) returns (0) {
+    // Return the NAME constant as a string
+    [NAME] [NAME_LEN] RETURN_STR()
+}
+
+#define macro SYMBOL() = takes (0) returns (0) {
+    // Return the SYMBOL constant as a string
+    [SYMBOL] [SYMBOL_LEN] RETURN_STR()
+}
+
+#define macro MINT() = takes (0) returns (0) {
+    // ARGV0: to
+    // ARGV1: amount
+
+    // Increment balance of to by amount
+    ARGV1() ARGV0() KEY_IN(BALANCE_OF) INCREMENT()
+
+    // Increment totalSupply by amount
+    ARGV1() [TOTAL_SUPPLY] INCREMENT()
+
+    // Emit Transfer(address(0), to, amount)
+    [ZERO_ADDRESS] ARGV0() ARGV1() EMIT_TRANSFER()
+
+    RETURN()
+}
+
+#define macro BURN() = takes (0) returns (0) {
+    // ARGV0: from
+    // ARGV1: amount
+
+    // Increment balance of from by amount
+    ARGV1() ARGV0() KEY_IN(BALANCE_OF) DECREMENT()
+
+    // Decrement totalSupply by amount
+    ARGV1() [TOTAL_SUPPLY] DECREMENT()
+
+    // Emit Transfer(from, address(0), amount)
+    ARGV1() [ZERO_ADDRESS] ARGV1() EMIT_TRANSFER()
+
+    RETURN()
+}
+
+#define macro APPROVE() = takes (0) returns (0) {
+    // ARGV0: spender
+    // ARGV1: amount
+
+    // Set allowances[spender] to amount
+    ARGV1() caller KEY_IN(ALLOWANCES) ARGV0() KEY() STORE_VALUE()
+
+    // Emit Approval(spender, amount)
+    ARGV0() caller ARGV1() EMIT_APPROVAL()
+
+    RETURN_TRUE()
+}
+
 #define macro TRANSFER() = takes (0) returns (0) {
+    // ARGV0: to
+    // ARGV1: amount
+
+    // If caller balance >= amount, jump to doTransfer
     ARGV1() caller SUFFICIENT_BALANCE() THEN(doTransfer)
+
+    // Otherwise, revert with InsufficientBalance()
     REVERT(INSUFFICIENT_BALANCE)
 
     doTransfer:
+        // Decrement caller balance by amount
         ARGV1() caller  KEY_IN(BALANCE_OF) DECREMENT()
+
+        // Increment to balance by amount
         ARGV1() ARGV0() KEY_IN(BALANCE_OF) INCREMENT()
+
+        // Emit Transfer(to, caller, amount)
         ARGV0() caller ARGV1() EMIT_TRANSFER()
+
         RETURN_TRUE()
 }
 
+
 #define macro TRANSFER_FROM() = takes (0) returns (0) {
+    // ARGV0: from
+    // ARGV1: to
+    // ARGV2: amount
+
+    // If caller approval is >= amount, jump to checkBalance
     ARGV2() ARGV0() AMOUNT_APPROVED() THEN(checkBalance)
+
+    // Otherwise, revert with InsufficientAllowance()
     REVERT(INSUFFICIENT_ALLOWANCE)
 
     checkBalance:
-        ARGV2() ARGV0() SUFFICIENT_BALANCE() THEN(doTransferFrom)
+        // If caller balance >= amount, jump to reduceAllowance
+        ARGV2() ARGV0() SUFFICIENT_BALANCE() THEN(reduceAllowance)
+
+        // Otherwice, revert with InsufficentBalance()
         REVERT(INSUFFICIENT_BALANCE)
-    
+
+    reduceAllowance:
+        // If allowance is unlimited, skip to doTransferFrom
+        ARGV0() UNLIMITED_ALLOWANCE() THEN(doTransferFrom)
+
+        // Otherwise, decrement caller's allowance by amount
+        ARGV2() ARGV0() KEY_IN(ALLOWANCES) caller KEY() DECREMENT()
+
+        // ...then skip to doTransferFrom
+        NEXT(doTransferFrom)
+
     doTransferFrom:
+        // Decrement from balance by amount
         ARGV2() ARGV0() KEY_IN(BALANCE_OF) DECREMENT()
+
+        // Increment to balance by amount
         ARGV2() ARGV1() KEY_IN(BALANCE_OF) INCREMENT()
-        ARGV2() ARGV0() KEY_IN(ALLOWANCES) caller KEY() DECREMENT() 
+
+        // Emit Transfer(from, to, amount)
         ARGV1() ARGV0() ARGV2() EMIT_TRANSFER()
+
         RETURN_TRUE()
 }
 
 #define macro MAIN() = takes (0) returns (0) {
+    // Put the 4 byte call signature on the stack
     CALL_SIG()
 
+    // If the signature on the stack matches a sig
+    // on the left, jump to the defined label.
     __FUNC_SIG(mint)         DEFJUMP(mint)
     __FUNC_SIG(burn)         DEFJUMP(burn)
     __FUNC_SIG(transfer)     DEFJUMP(transfer)
@@ -334,6 +514,7 @@
     __FUNC_SIG(symbol)       DEFJUMP(symbol)
     __FUNC_SIG(decimals)     DEFJUMP(decimals)
 
+    // If nothing matches, revert.
     FALLTHROUGH_REVERT()
 
     mint:
